@@ -24,10 +24,10 @@ def create_profiles(user_id, name, profile):
         profile[str(user_id)] = {
             "name": name,
             "level": 1,
-            "iron": 4,
-            "copper": 2,
-            "gold": 15,
-            "energy": 30,
+            "iron": 9,
+            "copper": 5,
+            "gold": 30,
+            "energy": 50,
             "xp": 0
         }
         save_profiles(profile)  # Сохраняем обновленные данные
@@ -267,9 +267,8 @@ def complete_craft(message, weapon_level, earned_gold, required_iron, required_c
             profile["copper"] -= required_copper
         profile["gold"] += earned_gold
 
-        xp_reward = 10 + (weapon_level * 2)
-        profile["xp"] += xp_reward
-        update_level(message.from_user.id, profile["xp"], profiles)
+        xp_reward = 10 + (weapon_level * profile['level'])
+        update_level(message.from_user.id, xp_reward, profiles)
 
         # Сохраняем обновленный профиль
         update_profiles(message.from_user.id, "iron", profile["iron"], profiles)
@@ -399,24 +398,36 @@ def buy_item(message):
         bot.send_message(message.chat.id, "Ошибка: товар не найден.")
         return
     
-    if profile["gold"] >= item["price"]:
-        profile["gold"] -= item["price"]
-        profile[item["resource"]] += item["amount"]
-        update_profiles(message.from_user.id, "gold", profile["gold"], profiles)
-        update_profiles(message.from_user.id, item["resource"], profile[item["resource"]], profiles)
-        
-        bot.send_message(
-            message.chat.id,
-            f"📦 Получено: {item['amount']} {item['name']}\n"
-            f"💰 Остаток золота: {profile['gold']}"
-        )
-    else:
+    # Проверяем, можно ли купить товар
+    if profile["gold"] < item["price"]:
         bot.send_message(
             message.chat.id,
             f"❌ Недостаточно золота!\n"
             f"💰 Нужно: {item['price']} золота\n"
             f"💰 У тебя: {profile['gold']} золота"
         )
+        return
+    
+    # Проверяем ограничение на энергию (не более 50)
+    if item["resource"] == "energy" and (profile["energy"] + item["amount"]) > 50:
+        bot.send_message(
+            message.chat.id,
+            f"❌ Нельзя купить больше 50 энергии!\n"
+            f"⚡ У тебя уже: {profile['energy']} энергии\n"
+        )
+        return
+    
+    # Покупка товара
+    profile["gold"] -= item["price"]
+    profile[item["resource"]] += item["amount"]
+    update_profiles(message.from_user.id, "gold", profile["gold"], profiles)
+    update_profiles(message.from_user.id, item["resource"], profile[item["resource"]], profiles)
+    
+    bot.send_message(
+        message.chat.id,
+        f"📦 Получено: {item['amount']} {item['name']}\n"
+        f"💰 Остаток золота: {profile['gold']}"
+    )
     
 if __name__ == "__main__":
     print("Бот запущен!")
