@@ -44,10 +44,10 @@ def update_profiles(user_id, key, value, profile):
 def start_keyboard():
     keyboard= types.ReplyKeyboardMarkup(resize_keyboard=True)
     buttons =[
-        types.KeyboardButton("Профиль"),
-        types.KeyboardButton("Кузница"),
-        types.KeyboardButton("Шахта"),
-        types.KeyboardButton("Магазин")]
+        types.KeyboardButton("👤 Профиль"),
+        types.KeyboardButton("⚙️ Кузница"),
+        types.KeyboardButton("⛏️ Шахта"),
+        types.KeyboardButton("🛒 Магазин")]
     for button in buttons:
         keyboard.add(button) #добавляем кнопки
     return keyboard  
@@ -93,14 +93,14 @@ def welcome(message):
     
     bot.send_message(message.chat.id, text, reply_markup=keyboard)
 
-@bot.message_handler(func=lambda m: m.text == "Профиль")
+@bot.message_handler(func=lambda m: m.text == "👤 Профиль")
 def profile(message):
     profile = get_profiles(message.from_user.id, profiles)
     text = (
         f"👤 Имя: {profile['name']}\n"
         f"⚙️ Уровень: {profile['level']}\n"
         f"🔩 Железо: {profile['iron']}\n"
-        f"🔩 Медь: {profile['copper']}\n"
+        f"🟠 Медь: {profile['copper']}\n"
         f"💰 Золото: {profile['gold']}\n"
         f"⚡ Энергия: {profile['energy']}\n"
         f"📈 Опыт: {profile['xp']}"
@@ -116,7 +116,7 @@ weapons = [
     {"name": "Топор", "iron": 3, "copper": 2, "gold": 25}
 ]
    
-@bot.message_handler(func=lambda m: m.text == "Кузница")#выбор оружия для крафта
+@bot.message_handler(func=lambda m: m.text == "⚙️ Кузница")#выбор оружия для крафта
 def blacksmithing(message):
     profile = get_profiles(message.from_user.id, profiles)
 
@@ -139,7 +139,7 @@ def blacksmithing(message):
     text = ("Твои ресурсы:\n"
         f"⚙️ Уровень: {profile['level']}\n"
         f"🔩 Железо: {profile['iron']}\n"
-        f"🔩 Медь: {profile['copper']}\n"
+        f"🟠 Медь: {profile['copper']}\n"
         f"💰 Золото: {profile['gold']}\n"
         "Что создаем?\n"
     )
@@ -196,23 +196,72 @@ def select_weapon_level(message):
         bot.send_message(message.chat.id, "Оружие не найдено.")
 
 
-@bot.message_handler(func=lambda m: "Ур." in m.text)  # Крафт
+@bot.message_handler(func=lambda m: "Ур." in m.text)  # Крафт (выбрали уровень оружия)
 def craft_weapon(message):
     profile = get_profiles(message.from_user.id, profiles)
     button_text = message.text
-
-    # Регулярное выражение с опциональной медью
+    user_level = profile['level']
+    # Регулярное выражение для извлечения данных
     match = re.match(r"Ур\. (\d+) Золото: (\d+), Железо: (\d+)(?:, Медь: (\d+))?", button_text)
-    
+    if not match:
+        bot.send_message(message.chat.id, "Ошибка: неверный формат кнопки.")
+        return
+
     weapon_level = int(match.group(1))
     earned_gold = int(match.group(2)) 
     required_iron = int(match.group(3)) 
     required_copper = int(match.group(4)) if match.group(4) else 0  # Требуемая медь (если есть)
 
+    # Проверяем, хватает ли ресурсов
     if (profile["iron"] >= required_iron and
         (required_copper == 0 or profile["copper"] >= required_copper)):
 
-        # Уменьшаем ресурсы
+        # Предлагаем игроку выбрать число от 1 до 18
+        bot.send_message(message.chat.id, "Выбери число от 1 до 18:")
+
+        # Сохраняем данные для следующего шага
+        bot.register_next_step_handler(message, lambda m: check_number(m, weapon_level, user_level, earned_gold, required_iron, required_copper))
+    else:
+        # Если ресурсов не хватает
+        bot.send_message(message.chat.id, 
+                         f"❌ Недостаточно ресурсов!\n"
+                         f"🔩 Нужно: Железо {required_iron}, Медь {required_copper}\n"
+                         f"📦 У вас: Железо {profile['iron']}, Медь {profile['copper']}")
+
+def check_number(message, weapon_level, user_level, earned_gold, required_iron, required_copper):
+    try:
+        player_number = int(message.text)
+        if player_number < 1 or player_number > 18:
+            bot.send_message(message.chat.id, "Число должно быть от 1 до 18. Попробуй еще раз.")
+            return
+    except ValueError:
+        bot.send_message(message.chat.id, "Это не число. Попробуй еще раз.")
+        return
+
+    # Генерация случайного числа ботом
+    bot_number = random.randint(1, 18)
+
+    # Определяем порог для успеха в зависимости от уровня оружия
+    if weapon_level == user_level - 1 if user_level > 1 else 0:
+        threshold = 7  # Шанс успеха ~77%
+    elif weapon_level == user_level:
+        threshold = 5  # Шанс успеха ~55%
+    elif weapon_level == user_level + 1:
+        threshold = 3  # Шанс успеха ~33%
+    else:
+        threshold = 5  # Значение по умолчанию 
+
+    # Проверяем, насколько близко число игрока к числу бота
+    difference = abs(player_number - bot_number)
+    if difference <= threshold:
+        complete_craft(message, weapon_level, earned_gold, required_iron, required_copper, success = True)
+    else:
+        complete_craft(message, weapon_level, earned_gold, required_iron, required_copper, success = False)
+
+def complete_craft(message, weapon_level, earned_gold, required_iron, required_copper, success=True):
+    profile = get_profiles(message.from_user.id, profiles)
+
+    if success:
         profile["iron"] -= required_iron
         if required_copper > 0:  # Если медь требуется
             profile["copper"] -= required_copper
@@ -220,7 +269,7 @@ def craft_weapon(message):
 
         xp_reward = 10 + (weapon_level * 2)
         profile["xp"] += xp_reward
-        update_level(message.from_user.id, xp_reward, profiles)
+        update_level(message.from_user.id, profile["xp"], profiles)
 
         # Сохраняем обновленный профиль
         update_profiles(message.from_user.id, "iron", profile["iron"], profiles)
@@ -232,14 +281,27 @@ def craft_weapon(message):
         # Отправляем сообщение об успехе
         bot.send_message(message.chat.id, 
                          f"✅ Успех!\n"
-                         f"⚡ Затрачено: Железо {required_iron}, Медь {required_copper}\n"
-                         f"🎁 Получено: {earned_gold} золота и {xp_reward} опыта")
+                         f"⚡ Затрачено: 🔩 Железо {required_iron}, 🟠 Медь {required_copper}\n"
+                         f"🎁 Получено: 💰 {earned_gold} золота и 📈 {xp_reward} опыта")
     else:
-        # Если ресурсов не хватает
+        # В случае неудачи забираем 3/5 ресурсов
+        lost_iron = int(required_iron * 3 / 5)
+        lost_copper = int(required_copper * 3 / 5) if required_copper > 0 else 0
+
+        profile["iron"] -= lost_iron
+        if required_copper > 0:  # Если медь требуется
+            profile["copper"] -= lost_copper
+
+        # Сохраняем обновленный профиль
+        update_profiles(message.from_user.id, "iron", profile["iron"], profiles)
+        if required_copper > 0:  # Если медь была использована
+            update_profiles(message.from_user.id, "copper", profile["copper"], profiles)
+
+        # Отправляем сообщение о неудаче
         bot.send_message(message.chat.id, 
-                         f"❌ Недостаточно ресурсов!\n"
-                         f"🔩 Нужно: Железо {required_iron}, Медь {required_copper}\n"
-                         f"📦 У вас: Железо {profile['iron']}, Медь {profile['copper']}")
+                         f"❌ Неудача!\n"
+                         f"⚡ Потеряно: 🔩 Железо {lost_iron}, 🟠 Медь {lost_copper}\n"
+                         f"💰 Золото не начислено.")
 
 @bot.message_handler(func=lambda m: m.text == "Выйти в меню")
 def exit_back(message):
@@ -261,9 +323,100 @@ def back(message):
     else:
         bot.send_message(message.chat.id, "Нет предыдущей клавиатуры.", reply_markup=start_keyboard())
 
-# @bot.message_handler(func=lambda m: m.text=="Шахта" )
+@bot.message_handler(func=lambda m: m.text == "⛏️ Шахта")
+def mine(message):
+    profile = get_profiles(message.from_user.id, profiles)
+    
+    if profile['energy'] < 4:
+        bot.send_message(message.chat.id, "⚡ Ты слишком устал!")
+        return
+    
+    profile['energy'] -= 4
+    update_profiles(message.from_user.id, "energy", profile['energy'], profiles)
+    
+    # Определяем успешность добычи
+    success = random.choice([True, True, False])
+    user_level = profile['level']
+    if success: #добыча
+        iron_gained = random.randint(2 + user_level, 9 + user_level)
+        copper_gained = random.randint(1 + user_level, 5 + user_level)  
+        profile['iron'] += iron_gained
+        profile['copper'] += copper_gained
+        update_profiles(message.from_user.id, "iron", profile['iron'], profiles)
+        update_profiles(message.from_user.id, "copper", profile['copper'], profiles)
+        
+        resulttext = f"⛏️ Ты добыл 🔩 железа: {iron_gained} и 🟠 меди: {copper_gained}"
+    else:
+        failure_messages = [
+            "⛏️ В шахте обвал! Ничего не найдено.",
+            "⛏️ Сегодня не твой день. Руды совсем не нашлось.",
+            "⛏️ Все твои ресурсы украли шахтеры-разбойники."
+        ]
+        resulttext = random.choice(failure_messages)
+    
+    # Отправляем результат
+    bot.send_message(message.chat.id, resulttext)
 
-# @bot.message_handler(func=lambda m: m.text=="Магазин" )
+@bot.message_handler(func=lambda m: m.text == "🛒 Магазин")
+def shop(message):
+    profile = get_profiles(message.from_user.id, profiles)
+    
+    # Товары в магазине
+    shop_items = [
+        {"name": "⚡ Энергия", "price": 10, "key": "energy", "amount": 5},
+        {"name": "🔩 Железо", "price": 15, "key": "iron", "amount": 3},
+        {"name": "🟠 Медь", "price": 20, "key": "copper", "amount": 2}
+    ]
+    
+    # Создаем клавиатуру для магазина
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for item in shop_items:
+        button_text = f"{item['name']} {item['amount']} - цена {item['price']}"
+        keyboard.add(types.KeyboardButton(button_text))
+    keyboard.add(types.KeyboardButton("Выйти в меню"))
+    
+    # Отправляем сообщение с товарами
+    text = (
+        "🛒 Добро пожаловать в магазин!\n"
+        f"💰 Ваш баланс: {profile['gold']} золота\n"
+        "Выбери товар для покупки:"
+    )
+    bot.send_message(message.chat.id, text, reply_markup=keyboard)
+
+@bot.message_handler(func=lambda m: any(item["name"] in m.text for item in [
+    {"name": "⚡ Энергия"}, {"name": "🔩 Железо"}, {"name": "🟠 Медь"}]))
+def buy_item(message):
+    profile = get_profiles(message.from_user.id, profiles)
+    
+    # Определяем, какой товар выбран
+    if "⚡ Энергия" in message.text:
+        item = {"name": "⚡ Энергия", "price": 10, "resource": "energy", "amount": 5}
+    elif "🔩 Железо" in message.text:
+        item = {"name": "🔩 Железо", "price": 15, "resource": "iron", "amount": 3}
+    elif "🟠 Медь" in message.text:
+        item = {"name": "🟠 Медь", "price": 20, "resource": "copper", "amount": 2}
+    else:
+        bot.send_message(message.chat.id, "Ошибка: товар не найден.")
+        return
+    
+    if profile["gold"] >= item["price"]:
+        profile["gold"] -= item["price"]
+        profile[item["resource"]] += item["amount"]
+        update_profiles(message.from_user.id, "gold", profile["gold"], profiles)
+        update_profiles(message.from_user.id, item["resource"], profile[item["resource"]], profiles)
+        
+        bot.send_message(
+            message.chat.id,
+            f"📦 Получено: {item['amount']} {item['name']}\n"
+            f"💰 Остаток золота: {profile['gold']}"
+        )
+    else:
+        bot.send_message(
+            message.chat.id,
+            f"❌ Недостаточно золота!\n"
+            f"💰 Нужно: {item['price']} золота\n"
+            f"💰 У тебя: {profile['gold']} золота"
+        )
     
 if __name__ == "__main__":
     print("Бот запущен!")
